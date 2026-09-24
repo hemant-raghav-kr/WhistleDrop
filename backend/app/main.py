@@ -40,7 +40,7 @@ app = FastAPI(
         "Confidential whistleblower reporting system for the GDG on Campus SRM Technical Domain recruitment.\n\n"
         "### Key Security & Privacy Guarantees:\n"
         "- **Zero-Knowledge Anonymity**: No reporter identities, names, emails, phones, or IP addresses are stored.\n"
-        "- **Cryptographic Case Codes**: High-entropy codes (2^80 combinations) stored exclusively as HMAC-SHA256 digests.\n"
+        "- **Cryptographic Case Codes**: High-entropy codes (32^16 = 2^80 ≈ 1.2089 × 10^24 combinations, ~80 bits of entropy) stored exclusively as HMAC-SHA256 digests using a server-side secret key.\n"
         "- **Internal ID Concealment**: Public reporter endpoints never reveal database UUIDs or hashes.\n"
         "- **Strict Lifecycle State Transitions**: SUBMITTED -> UNDER_REVIEW -> RESOLVED or DISMISSED.\n"
         "- **Independent Moderator Auth**: Salted bcrypt password hashing and signed JWT bearer tokens."

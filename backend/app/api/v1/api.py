@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, moderator, reports
+from app.api.v1.endpoints import admin, auth, moderator, reports
 
 api_router = APIRouter()
 
@@ -22,4 +22,10 @@ api_router.include_router(
     moderator.router,
     prefix="/moderator",
     tags=["Moderator"],
+)
+
+api_router.include_router(
+    admin.router,
+    prefix="/admin",
+    tags=["Admin User Management"],
 )

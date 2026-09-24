@@ -2,7 +2,7 @@
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.evidence_file import EvidenceFile
-from app.models.moderator import Moderator
+from app.models.moderator import Moderator, UserRole
 from app.models.report import Report, ReportCategory, ReportStatus
 from app.models.status_update import StatusUpdate
 
@@ -12,6 +12,7 @@ __all__ = [
     "UUIDPrimaryKeyMixin",
     "EvidenceFile",
     "Moderator",
+    "UserRole",
     "Report",
     "ReportStatus",
     "ReportCategory",

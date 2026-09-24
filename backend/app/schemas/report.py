@@ -143,6 +143,14 @@ class ReportPublicLookup(BaseModel):
         default=False,
         description="Indicates whether external link or file evidence was attached",
     )
+    is_closed: bool = Field(
+        default=False,
+        description="Indicates whether the case has been permanently closed",
+    )
+    closed_at: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp when the case was permanently closed",
+    )
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -174,6 +182,14 @@ class ReportModeratorRead(BaseModel):
     evidence_files: List[EvidenceFileRead] = Field(
         default_factory=list,
         description="List of securely stored evidence file attachments",
+    )
+    is_closed: bool = Field(
+        default=False,
+        description="Indicates whether the case has been permanently closed",
+    )
+    closed_at: Optional[datetime] = Field(
+        default=None,
+        description="Timestamp when the case was permanently closed",
     )
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

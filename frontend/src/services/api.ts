@@ -9,15 +9,21 @@
 import {
   EvidenceDownloadResponse,
   LoginRequest,
+  RegisterRequest,
   ReportCreate,
   ReportModeratorRead,
   ReportPublicCreated,
   ReportPublicLookup,
   ReportStatus,
   Token,
+  UserAdminRead,
+  UserRead,
 } from '../types';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+// Determine backend API base URL (supports VITE_API_URL or VITE_API_BASE_URL, default '/api/v1')
+const rawApiUrl = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '/api/v1').trim();
+const normalizedUrl = rawApiUrl.replace(/\/$/, '');
+const API_BASE = normalizedUrl.endsWith('/api/v1') ? normalizedUrl : `${normalizedUrl}/api/v1`;
 
 // Storage key for moderator session
 const TOKEN_KEY = 'whistledrop_moderator_token';
@@ -131,7 +137,58 @@ export async function trackReport(caseCode: string): Promise<ReportPublicLookup>
 }
 
 /**
- * Moderator Authentication Login (Public)
+ * Register a new user account (Public)
+ * Always creates account with role = USER.
+ */
+export async function register(payload: RegisterRequest): Promise<UserRead> {
+  const response = await fetch(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (response.status === 409) {
+    throw new Error('An account with this email address already exists.');
+  }
+
+  if (!response.ok) {
+    throw await parseApiError(response, 'Registration failed. Please check your inputs.');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get current authenticated user profile and live server role (Protected)
+ */
+export async function getCurrentUser(): Promise<UserRead> {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('No authentication token found.');
+  }
+
+  const response = await fetch(`${API_BASE}/auth/me`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    clearAuthToken();
+    throw new Error('Your session has expired. Please log in again.');
+  }
+
+  if (!response.ok) {
+    throw await parseApiError(response, 'Failed to fetch current user profile.');
+  }
+
+  return response.json();
+}
+
+/**
+ * User/Moderator/Admin Authentication Login (Public)
  */
 export async function loginModerator(payload: LoginRequest): Promise<Token> {
   const response = await fetch(`${API_BASE}/auth/login`, {
@@ -144,7 +201,7 @@ export async function loginModerator(payload: LoginRequest): Promise<Token> {
     throw new Error('Incorrect username/email or password.');
   }
   if (response.status === 403) {
-    throw new Error('This moderator account has been deactivated. Please contact an administrator.');
+    throw new Error('This account has been deactivated. Please contact an administrator.');
   }
 
   if (!response.ok) {
@@ -162,6 +219,7 @@ export async function loginModerator(payload: LoginRequest): Promise<Token> {
 export async function getModeratorReports(params?: {
   status?: string;
   category?: string;
+  search?: string;
   skip?: number;
   limit?: number;
 }): Promise<ReportModeratorRead[]> {
@@ -173,6 +231,9 @@ export async function getModeratorReports(params?: {
   }
   if (params?.category && params.category !== 'ALL') {
     searchParams.append('category', params.category);
+  }
+  if (params?.search && params.search.trim()) {
+    searchParams.append('search', params.search.trim());
   }
   if (params?.skip !== undefined) {
     searchParams.append('skip', String(params.skip));
@@ -332,5 +393,111 @@ export async function downloadEvidenceFile(
   a.click();
   a.remove();
   window.URL.revokeObjectURL(downloadUrl);
+}
+
+/**
+ * Permanently Close Case (Protected: MODERATOR or ADMIN)
+ */
+export async function closeReport(
+  reportId: string,
+  message: string,
+): Promise<ReportModeratorRead> {
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE}/moderator/reports/${reportId}/close`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      message: message.trim(),
+    }),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    clearAuthToken();
+    throw new Error('Your session has expired or is unauthorized. Please log in again.');
+  }
+  if (response.status === 400) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'This case cannot be closed or is already closed.');
+  }
+
+  if (!response.ok) {
+    throw await parseApiError(response, 'Failed to close report.');
+  }
+
+  return response.json();
+}
+
+/**
+ * List all users with optional filtering (Protected: ADMIN only)
+ */
+export async function getAdminUsers(params?: {
+  search?: string;
+  role?: string;
+}): Promise<UserAdminRead[]> {
+  const token = getAuthToken();
+  const searchParams = new URLSearchParams();
+
+  if (params?.search && params.search.trim()) {
+    searchParams.append('search', params.search.trim());
+  }
+  if (params?.role && params.role !== 'ALL') {
+    searchParams.append('role', params.role);
+  }
+
+  const queryString = searchParams.toString() ? `?${searchParams.toString()}` : '';
+  const response = await fetch(`${API_BASE}/admin/users${queryString}`, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('Administrator privileges required to view user management.');
+  }
+
+  if (!response.ok) {
+    throw await parseApiError(response, 'Failed to fetch user list.');
+  }
+
+  return response.json();
+}
+
+/**
+ * Promote/Demote a user role between USER and MODERATOR (Protected: ADMIN only)
+ */
+export async function updateUserRole(
+  userId: string,
+  newRole: 'USER' | 'MODERATOR',
+): Promise<UserAdminRead> {
+  const token = getAuthToken();
+  const response = await fetch(`${API_BASE}/admin/users/${userId}/role`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ role: newRole }),
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('Administrator privileges required to modify user roles.');
+  }
+  if (response.status === 400) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Invalid role update requested.');
+  }
+
+  if (!response.ok) {
+    throw await parseApiError(response, 'Failed to update user role.');
+  }
+
+  return response.json();
 }
 

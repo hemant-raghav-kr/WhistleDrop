@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, ProtectedRoute } from './context/AuthContext';
+import { AuthProvider, ProtectedRoute, AdminProtectedRoute } from './context/AuthContext';
 import { Header } from './components/common/Header';
 import { Footer } from './components/common/Footer';
 import { HomePage } from './pages/HomePage';
@@ -9,6 +9,7 @@ import { TrackReportPage } from './pages/TrackReportPage';
 import { ModeratorLoginPage } from './pages/ModeratorLoginPage';
 import { ModeratorDashboardPage } from './pages/ModeratorDashboardPage';
 import { ModeratorReportDetailPage } from './pages/ModeratorReportDetailPage';
+import { AdminUsersPage } from './pages/AdminUsersPage';
 
 export const App: React.FC = () => {
   return (
@@ -24,7 +25,7 @@ export const App: React.FC = () => {
               <Route path="/track" element={<TrackReportPage />} />
               <Route path="/track/:caseCode" element={<TrackReportPage />} />
 
-              {/* Moderator Portal Authentication */}
+              {/* Moderator & User Portal Authentication */}
               <Route path="/moderator/login" element={<ModeratorLoginPage />} />
 
               {/* Protected Staff Moderator Routes */}
@@ -37,11 +38,29 @@ export const App: React.FC = () => {
                 }
               />
               <Route
+                path="/moderator/reports"
+                element={
+                  <ProtectedRoute>
+                    <ModeratorDashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/moderator/reports/:id"
                 element={
                   <ProtectedRoute>
                     <ModeratorReportDetailPage />
                   </ProtectedRoute>
+                }
+              />
+
+              {/* Protected Administrator Routes */}
+              <Route
+                path="/admin/users"
+                element={
+                  <AdminProtectedRoute>
+                    <AdminUsersPage />
+                  </AdminProtectedRoute>
                 }
               />
 

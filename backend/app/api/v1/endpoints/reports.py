@@ -29,8 +29,8 @@ router = APIRouter()
         "No reporter identity (name, email, phone, IP address, or device fingerprint) is collected or stored. "
         "Supports optional evidence URL and/or optional evidence file upload (max 10MB; PNG, JPG, WEBP, PDF, TXT). "
         "Accepts either application/json or multipart/form-data. "
-        "Generates an unpredictable cryptographically secure case code (2^80 combinations) and returns the "
-        "raw code once to the reporter. The database persists only a one-way HMAC-SHA256 digest."
+        "Generates an unpredictable cryptographically secure case code (32^16 = 2^80 ≈ 1.2089 × 10^24 combinations, ~80 bits of entropy) and returns the "
+        "raw code once to the reporter. The database persists only a one-way HMAC-SHA256 digest using a server-side secret key."
     ),
     responses={
         201: {"description": "Report submitted successfully; case code generated"},

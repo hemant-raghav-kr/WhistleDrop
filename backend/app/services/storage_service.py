@@ -189,15 +189,29 @@ def get_storage_service() -> StorageService:
     """Factory creating or returning the configured StorageService singleton."""
     global _storage_service_instance
     if _storage_service_instance is None:
-        if settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY:
+        target_provider = settings.STORAGE_PROVIDER.lower().strip()
+        use_supabase = False
+
+        if target_provider == "supabase":
+            use_supabase = True
+        elif target_provider == "local":
+            use_supabase = False
+        else:  # "auto"
+            use_supabase = bool(settings.SUPABASE_URL and settings.SUPABASE_SERVICE_ROLE_KEY)
+
+        if use_supabase:
+            if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_ROLE_KEY:
+                raise StorageException(
+                    "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when using Supabase storage."
+                )
             provider = SupabaseStorageProvider(
                 supabase_url=settings.SUPABASE_URL,
                 service_role_key=settings.SUPABASE_SERVICE_ROLE_KEY,
                 bucket=settings.SUPABASE_STORAGE_BUCKET,
             )
-            logger.info("Configured SupabaseStorageProvider for bucket: %s", settings.SUPABASE_STORAGE_BUCKET)
+            logger.info("Configured SupabaseStorageProvider for private bucket: %s", settings.SUPABASE_STORAGE_BUCKET)
         else:
             provider = LocalStorageProvider(base_dir=settings.STORAGE_LOCAL_FALLBACK_DIR)
-            logger.info("Configured LocalStorageProvider for dev/test in: %s", settings.STORAGE_LOCAL_FALLBACK_DIR)
+            logger.info("Configured LocalStorageProvider in: %s", settings.STORAGE_LOCAL_FALLBACK_DIR)
         _storage_service_instance = StorageService(provider=provider)
     return _storage_service_instance

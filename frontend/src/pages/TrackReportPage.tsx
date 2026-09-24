@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Calendar,
   Clock,
+  Lock,
   RotateCcw,
   Search,
   ShieldCheck,
@@ -161,6 +162,17 @@ export const TrackReportPage: React.FC = () => {
               Refresh
             </Button>
           </div>
+
+          {/* Permanently Closed Notice */}
+          {report.is_closed && (
+            <div className="p-3.5 rounded-md bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5">
+              <Lock className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>
+                This case has been <strong className="text-rose-200">permanently closed</strong>
+                {report.closed_at ? ` on ${formatDate(report.closed_at)}` : ''}.
+              </span>
+            </div>
+          )}
 
           {/* Timestamp Metadata */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">

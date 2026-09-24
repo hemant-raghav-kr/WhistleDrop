@@ -11,8 +11,8 @@ Layered REST API service powering **WhistleDrop** ("Speak Without Being Seen") f
 
 2. **Cryptographic Case Codes**:
    - Unpredictable codes generated via Python `secrets` CSPRNG using 32 Crockford safe characters (`23456789ABCDEFGHJKMNPQRSTUVWXYZ`).
-   - Entropy: 16 characters $\times$ 32 symbols = $32^{16} = 2^{80} \approx 1.209 \times 10^{24}$ combinations (~80 bits entropy).
-   - Stored strictly as a one-way `HMAC-SHA256(CASE_CODE_SALT, code)` digest in PostgreSQL.
+   - Entropy: 16 characters $\times$ 32 symbols = $32^{16} = 2^{80} \approx 1.2089 \times 10^{24}$ combinations (~80 bits of entropy).
+   - Stored strictly as a one-way HMAC-SHA256 digest using a server-side secret key in the database.
 
 3. **Case Tracking**:
    - Query by case code: `GET /api/v1/reports/{case_code}`.
@@ -39,7 +39,7 @@ cd backend
 ..\.venv\Scripts\Activate.ps1
 copy .env.example .env
 
-# Run automated test suite (32 tests covering all 14 test areas):
+# Run automated test suite (69 tests covering all core and optional features):
 pytest tests/ -v
 
 # Run database migrations:

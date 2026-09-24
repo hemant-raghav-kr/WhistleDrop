@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   Filter,
+  Lock,
   RotateCcw,
+  Search,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { StatusBadge, CategoryBadge } from '../components/common/Badge';
@@ -25,8 +27,13 @@ export const ModeratorDashboardPage: React.FC = () => {
   // Filter State
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const fetchReports = async (status = statusFilter, category = categoryFilter) => {
+  const fetchReports = async (
+    status = statusFilter,
+    category = categoryFilter,
+    search = searchQuery
+  ) => {
     setIsLoading(true);
     setErrorMessage(null);
 
@@ -34,10 +41,11 @@ export const ModeratorDashboardPage: React.FC = () => {
       const data = await getModeratorReports({
         status: status !== 'ALL' ? status : undefined,
         category: category !== 'ALL' ? category : undefined,
+        search: search.trim() || undefined,
       });
       setReports(data);
 
-      if (status === 'ALL' && category === 'ALL') {
+      if (status === 'ALL' && category === 'ALL' && !search.trim()) {
         setAllReports(data);
       } else {
         const full = await getModeratorReports();
@@ -51,8 +59,8 @@ export const ModeratorDashboardPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchReports(statusFilter, categoryFilter);
-  }, [statusFilter, categoryFilter]);
+    fetchReports(statusFilter, categoryFilter, searchQuery);
+  }, [statusFilter, categoryFilter, searchQuery]);
 
   // Compute metrics
   const totalCount = allReports.length;
@@ -90,7 +98,7 @@ export const ModeratorDashboardPage: React.FC = () => {
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => fetchReports(statusFilter, categoryFilter)}
+          onClick={() => fetchReports(statusFilter, categoryFilter, searchQuery)}
           icon={<RotateCcw className="w-3.5 h-3.5" />}
         >
           Refresh
@@ -98,9 +106,12 @@ export const ModeratorDashboardPage: React.FC = () => {
       </div>
 
       {/* Compact Metrics Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div className="p-3.5 rounded-lg bg-zinc-900/40 border border-zinc-800">
-          <span className="text-[11px] text-zinc-500 font-medium">All Reports</span>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+            <span className="text-[11px] text-zinc-400 font-medium">All Reports</span>
+          </div>
           <p className="text-xl font-semibold text-zinc-100 mt-0.5">{totalCount}</p>
         </div>
 
@@ -114,7 +125,7 @@ export const ModeratorDashboardPage: React.FC = () => {
 
         <div className="p-3.5 rounded-lg bg-zinc-900/40 border border-zinc-800">
           <div className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
             <span className="text-[11px] text-zinc-400 font-medium">Under Review</span>
           </div>
           <p className="text-xl font-semibold text-zinc-100 mt-0.5">{underReviewCount}</p>
@@ -137,9 +148,20 @@ export const ModeratorDashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Toolbar */}
-      <div className="p-3 rounded-lg bg-zinc-900/30 border border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-3 flex-wrap">
+      {/* Search & Filter Toolbar */}
+      <div className="p-3 rounded-lg bg-zinc-900/30 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3 flex-wrap flex-1">
+          <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              placeholder="Search by keywords or report ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600"
+            />
+          </div>
+
           <div className="flex items-center gap-1.5 text-zinc-400 text-xs">
             <Filter className="w-3.5 h-3.5 text-zinc-500" />
             <span>Filter:</span>
@@ -174,131 +196,157 @@ export const ModeratorDashboardPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          {(statusFilter !== 'ALL' || categoryFilter !== 'ALL') && (
+          {(statusFilter !== 'ALL' || categoryFilter !== 'ALL' || searchQuery.trim()) && (
             <button
               onClick={() => {
                 setStatusFilter('ALL');
                 setCategoryFilter('ALL');
+                setSearchQuery('');
               }}
-              className="text-zinc-400 hover:text-zinc-200 underline text-xs"
+              className="text-xs text-zinc-400 hover:text-zinc-200 underline"
             >
               Reset filters
             </button>
           )}
-          <span className="text-zinc-500 text-xs font-mono">
-            {reports.length} report{reports.length === 1 ? '' : 's'}
+
+          <span className="text-zinc-500 font-mono text-[11px]">
+            {reports.length} report{reports.length === 1 ? '' : 's'} shown
           </span>
         </div>
       </div>
 
-      {/* Main Reports List */}
-      <div>
-        {isLoading ? (
-          <LoadingSpinner message="Loading reports..." />
-        ) : errorMessage ? (
-          <ErrorState
-            title="Failed to load reports"
-            message={errorMessage}
-            onRetry={() => fetchReports(statusFilter, categoryFilter)}
-          />
-        ) : reports.length === 0 ? (
-          <EmptyState
-            title="No reports match your filters"
-            description="Try selecting a different status or category above."
-            action={
-              (statusFilter !== 'ALL' || categoryFilter !== 'ALL') ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setStatusFilter('ALL');
-                    setCategoryFilter('ALL');
-                  }}
-                >
-                  Clear filters
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <div className="space-y-3">
-            {/* Desktop Table */}
-            <div className="hidden md:block overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-zinc-950/70 border-b border-zinc-800 text-zinc-500 font-mono text-[11px] uppercase">
-                  <tr>
-                    <th className="py-2.5 px-4 font-medium">Category</th>
-                    <th className="py-2.5 px-4 font-medium">Status</th>
-                    <th className="py-2.5 px-4 font-medium">Description Preview</th>
-                    <th className="py-2.5 px-4 font-medium">Submitted</th>
-                    <th className="py-2.5 px-4 font-medium">Updated</th>
-                    <th className="py-2.5 px-4 text-right font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/80">
-                  {reports.map((report) => (
-                    <tr
-                      key={report.id}
-                      onClick={() => navigate(`/moderator/reports/${report.id}`)}
-                      className="hover:bg-zinc-900/60 transition-colors cursor-pointer group"
-                    >
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <CategoryBadge category={report.category} size="sm" />
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
+      {/* Main Content Area */}
+      {isLoading ? (
+        <LoadingSpinner message="Loading moderation queue..." />
+      ) : errorMessage ? (
+        <ErrorState
+          title="Error Loading Reports"
+          message={errorMessage}
+          onRetry={() => fetchReports(statusFilter, categoryFilter, searchQuery)}
+        />
+      ) : reports.length === 0 ? (
+        <EmptyState
+          title="No reports match your filters"
+          description={
+            statusFilter !== 'ALL' || categoryFilter !== 'ALL' || searchQuery.trim()
+              ? 'Try adjusting your search criteria or resetting filters to see more reports.'
+              : 'There are currently no reports submitted to the system.'
+          }
+          action={
+            statusFilter !== 'ALL' || categoryFilter !== 'ALL' || searchQuery.trim() ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setStatusFilter('ALL');
+                  setCategoryFilter('ALL');
+                  setSearchQuery('');
+                }}
+              >
+                Clear all filters
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="space-y-3">
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/30">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-zinc-950/70 border-b border-zinc-800 text-zinc-500 font-mono text-[11px] uppercase">
+                <tr>
+                  <th className="py-2.5 px-4 font-medium">Category</th>
+                  <th className="py-2.5 px-4 font-medium">Status</th>
+                  <th className="py-2.5 px-4 font-medium">Description Preview</th>
+                  <th className="py-2.5 px-4 font-medium">Submitted</th>
+                  <th className="py-2.5 px-4 font-medium">Updated</th>
+                  <th className="py-2.5 px-4 text-right font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/80">
+                {reports.map((report) => (
+                  <tr
+                    key={report.id}
+                    onClick={() => navigate(`/moderator/reports/${report.id}`)}
+                    className="hover:bg-zinc-900/60 transition-colors cursor-pointer group"
+                  >
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <CategoryBadge category={report.category} size="sm" />
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
                         <StatusBadge status={report.status} size="sm" />
-                      </td>
-                      <td className="py-3 px-4 max-w-xs truncate text-zinc-300">
-                        {report.description}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap text-zinc-500 font-mono text-[11px]">
-                        {formatDate(report.created_at)}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap text-zinc-500 font-mono text-[11px]">
-                        {formatDate(report.updated_at)}
-                      </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 text-zinc-400 group-hover:text-zinc-100 font-medium text-xs">
-                          <span>Inspect</span>
-                          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        {report.is_closed && (
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                            title="Permanently Closed"
+                          >
+                            <Lock className="w-2.5 h-2.5" />
+                            CLOSED
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 max-w-xs truncate text-zinc-300">
+                      {report.description}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap text-zinc-500 font-mono text-[11px]">
+                      {formatDate(report.created_at)}
+                    </td>
+                    <td className="py-3 px-4 whitespace-nowrap text-zinc-500 font-mono text-[11px]">
+                      {formatDate(report.updated_at)}
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 text-zinc-400 group-hover:text-zinc-100 font-medium text-xs">
+                        <span>Inspect</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-            {/* Mobile Cards */}
-            <div className="grid grid-cols-1 gap-2.5 md:hidden">
-              {reports.map((report) => (
-                <div
-                  key={report.id}
-                  onClick={() => navigate(`/moderator/reports/${report.id}`)}
-                  className="p-3.5 rounded-lg border border-zinc-800 bg-zinc-900/40 space-y-2.5 cursor-pointer hover:border-zinc-700 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
+          {/* Mobile Cards */}
+          <div className="grid grid-cols-1 gap-2.5 md:hidden">
+            {reports.map((report) => (
+              <div
+                key={report.id}
+                onClick={() => navigate(`/moderator/reports/${report.id}`)}
+                className="p-3.5 rounded-lg border border-zinc-800 bg-zinc-900/40 space-y-2.5 cursor-pointer hover:border-zinc-700 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
                     <CategoryBadge category={report.category} size="sm" />
                     <StatusBadge status={report.status} size="sm" />
+                    {report.is_closed && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                        <Lock className="w-2.5 h-2.5" />
+                        CLOSED
+                      </span>
+                    )}
                   </div>
-
-                  <p className="text-xs text-zinc-300 line-clamp-2">
-                    {report.description}
-                  </p>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-zinc-800/80 text-[11px] text-zinc-500">
-                    <span className="font-mono">{formatDate(report.created_at)}</span>
-                    <span className="text-zinc-300 font-medium flex items-center gap-1">
-                      <span>Inspect</span>
-                      <ArrowRight className="w-3 h-3" />
-                    </span>
-                  </div>
+                  <span className="text-[11px] font-mono text-zinc-500">
+                    {formatDate(report.created_at)}
+                  </span>
                 </div>
-              ))}
-            </div>
+
+                <p className="text-xs text-zinc-300 line-clamp-2 leading-relaxed">
+                  {report.description}
+                </p>
+
+                <div className="flex items-center justify-end text-xs text-zinc-400 pt-1 font-medium">
+                  <span className="inline-flex items-center gap-1">
+                    <span>Inspect</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

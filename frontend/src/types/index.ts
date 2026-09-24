@@ -5,6 +5,8 @@
 
 export type ReportStatus = 'SUBMITTED' | 'UNDER_REVIEW' | 'RESOLVED' | 'DISMISSED';
 
+export type UserRole = 'USER' | 'MODERATOR' | 'ADMIN';
+
 export type ReportCategory =
   | 'SECURITY'
   | 'HARASSMENT'
@@ -66,6 +68,8 @@ export interface ReportPublicLookup {
   created_at: string;
   updated_at: string;
   has_evidence?: boolean;
+  is_closed?: boolean;
+  closed_at?: string;
   updates: PublicStatusUpdateRead[];
   status_updates?: StatusUpdateRead[];
 }
@@ -76,11 +80,41 @@ export interface ReportModeratorRead {
   description: string;
   evidence_url?: string;
   status: ReportStatus;
+  is_closed?: boolean;
+  closed_at?: string;
   created_at: string;
   updated_at: string;
   status_updates: StatusUpdateRead[];
   updates?: PublicStatusUpdateRead[];
   evidence_files?: EvidenceFileRead[];
+}
+
+export interface RegisterRequest {
+  name: string;
+  email: string;
+  password: string;
+  confirm_password: string;
+}
+
+export interface UserRead {
+  id: string;
+  name?: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface UserAdminRead {
+  id: string;
+  name?: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface LoginRequest {
@@ -91,4 +125,7 @@ export interface LoginRequest {
 export interface Token {
   access_token: string;
   token_type: string;
+  role?: string;
+  name?: string;
+  email?: string;
 }

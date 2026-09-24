@@ -15,6 +15,7 @@ from app.schemas.report import (
 )
 from app.services.report_service import (
     InvalidStatusTransitionError,
+    close_report,
     get_evidence_file,
     get_report_by_id,
     get_reports,
@@ -47,6 +48,7 @@ def list_reports(
     limit: int = Query(50, ge=1, le=100, description="Page limit (1-100)"),
     status_filter: Optional[ReportStatus] = Query(None, alias="status", description="Filter by status"),
     category_filter: Optional[str] = Query(None, alias="category", description="Filter by category (case-insensitive)"),
+    search: Optional[str] = Query(None, description="Search keyword in report description"),
     db: Session = Depends(get_db),
     current_moderator: Moderator = Depends(get_current_moderator),
 ) -> List[ReportModeratorRead]:
@@ -57,6 +59,7 @@ def list_reports(
         limit=limit,
         status_filter=status_filter,
         category_filter=category_filter,
+        search=search,
     )
     return [ReportModeratorRead.model_validate(r) for r in reports]
 
@@ -141,6 +144,46 @@ def change_report_status(
         )
 
     return ReportModeratorRead.model_validate(updated_report)
+
+
+@router.post(
+    "/reports/{report_id}/close",
+    response_model=ReportModeratorRead,
+    status_code=status.HTTP_200_OK,
+    summary="Permanently close a case (Moderator only)",
+    description=(
+        "Permanently close a case. Once closed, the case cannot undergo any further status transitions. "
+        "Appends an audit entry into status_updates and sets is_closed to true."
+    ),
+    responses={
+        200: {"description": "Case permanently closed"},
+        400: {"description": "Case is already closed"},
+        401: {"description": "Missing, invalid, or expired JWT bearer token"},
+        403: {"description": "Inactive account or insufficient permissions"},
+        404: {"description": "Report not found with the specified ID"},
+        422: {"description": "Invalid UUID format"},
+    },
+)
+def close_case(
+    report_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_moderator: Moderator = Depends(get_current_moderator),
+) -> ReportModeratorRead:
+    """Permanently close a report case."""
+    report = get_report_by_id(db=db, report_id=report_id)
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report with ID '{report_id}' not found.",
+        )
+    try:
+        updated = close_report(db=db, report=report)
+        return ReportModeratorRead.model_validate(updated)
+    except InvalidStatusTransitionError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
 
 @router.get(

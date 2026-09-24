@@ -16,10 +16,14 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    # Case code pepper / salt for secure hashing
+    # Case code server-side secret key for HMAC-SHA256 hashing
     CASE_CODE_SALT: str = "default_case_code_salt"
 
+    # Frontend URL for production CORS configuration (e.g. Vercel deployment)
+    FRONTEND_URL: Optional[str] = None
+
     # Object Storage (Supabase Storage for evidence files)
+    STORAGE_PROVIDER: str = "auto"  # "auto", "supabase", or "local"
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
     SUPABASE_STORAGE_BUCKET: str = "whistledrop-evidence"
@@ -33,6 +37,19 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
     ]
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_database_url(cls, v: str) -> str:
+        if isinstance(v, str):
+            v_clean = v.strip()
+            # Standardize postgresql drivers for psycopg 3
+            if v_clean.startswith("postgres://"):
+                return v_clean.replace("postgres://", "postgresql+psycopg://", 1)
+            elif v_clean.startswith("postgresql://") and not v_clean.startswith("postgresql+"):
+                return v_clean.replace("postgresql://", "postgresql+psycopg://", 1)
+            return v_clean
+        return v
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
@@ -44,11 +61,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
+        if self.FRONTEND_URL:
+            clean_url = self.FRONTEND_URL.strip().rstrip("/")
+            if clean_url and clean_url not in self.CORS_ORIGINS:
+                self.CORS_ORIGINS.append(clean_url)
+
         if self.ENVIRONMENT.lower() == "production":
             if self.JWT_SECRET == "default_dev_secret_change_in_production":
                 raise ValueError("JWT_SECRET must be configured with a secure key in production.")
             if self.CASE_CODE_SALT == "default_case_code_salt":
-                raise ValueError("CASE_CODE_SALT must be configured with a secure salt in production.")
+                raise ValueError("CASE_CODE_SALT must be configured with a secure secret key in production.")
         return self
 
     model_config = SettingsConfigDict(

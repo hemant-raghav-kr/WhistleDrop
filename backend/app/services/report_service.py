@@ -38,8 +38,8 @@ def create_report(
     """Create a new confidential report with transactional atomicity.
 
     Privacy & Security Guarantees:
-    - Generates a cryptographically strong, unpredictable case code (CSPRNG, 2^80 entropy).
-    - Persists ONLY the one-way HMAC-SHA256 digest in the database.
+    - Generates a cryptographically strong, unpredictable case code (CSPRNG, 32^16 = 2^80 ≈ 1.2089 × 10^24 combinations, ~80 bits of entropy).
+    - Persists ONLY the one-way HMAC-SHA256 digest using a server-side secret key in the database.
     - Transactionally creates the report and its initial SUBMITTED audit log.
     - If an evidence file is attached, uploads to private object storage and stores metadata.
     - Automatically cleans up uploaded storage objects if the database transaction fails.
@@ -131,14 +131,18 @@ def get_reports(
     limit: int = 50,
     status_filter: Optional[ReportStatus] = None,
     category_filter: Optional[str] = None,
+    search: Optional[str] = None,
 ) -> List[Report]:
-    """Retrieve reports with pagination and filtering for moderator review."""
+    """Retrieve reports with pagination, category/status filtering, and search for moderator review."""
     query = db.query(Report)
     if status_filter:
         query = query.filter(Report.status == status_filter)
     if category_filter:
         cat_clean = category_filter.strip().upper()
         query = query.filter(Report.category == cat_clean)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(Report.description.ilike(term))
     return query.order_by(Report.created_at.desc()).offset(skip).limit(limit).all()
 
 
@@ -151,10 +155,14 @@ def update_report_status(
     """Validate and execute an atomic status transition on a report.
 
     Validates:
+    - Verifies report is not permanently closed.
     - Target status is valid for the current lifecycle state.
     - Appends audit trail entry into `status_updates`.
     - Guarantees transaction atomicity (both update or neither does).
     """
+    if report.is_closed:
+        raise InvalidStatusTransitionError("This case has been permanently closed and cannot be transitioned.")
+
     if report.status == new_status:
         raise InvalidStatusTransitionError(f"Report is already in '{new_status.value}' status.")
 
@@ -185,3 +193,32 @@ def update_report_status(
     except Exception:
         db.rollback()
         raise
+
+
+def close_report(
+    db: Session,
+    report: Report,
+    message: Optional[str] = None,
+) -> Report:
+    """Permanently close a case. Closed cases cannot undergo further status transitions."""
+    if report.is_closed:
+        raise InvalidStatusTransitionError("Case is already permanently closed.")
+
+    try:
+        report.is_closed = True
+        report.closed_at = datetime.now(timezone.utc)
+        report.updated_at = datetime.now(timezone.utc)
+        close_message = message.strip() if message and message.strip() else "Case permanently closed by moderator."
+        audit_update = StatusUpdate(
+            report_id=report.id,
+            status=report.status,
+            update_message=close_message,
+        )
+        db.add(audit_update)
+        db.commit()
+        db.refresh(report)
+        return report
+    except Exception:
+        db.rollback()
+        raise
+

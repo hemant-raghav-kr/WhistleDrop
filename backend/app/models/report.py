@@ -1,8 +1,7 @@
-"""Confidential Report ORM model."""
-
 import enum
+from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import Enum, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -36,8 +35,8 @@ class Report(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     Privacy & Security Guarantees:
     - Absolutely no reporter identity fields (name, email, phone, IP, user-agent, session, device fingerprint) are collected or stored.
-    - `case_code_hash` stores a one-way HMAC-SHA256 digest of the reporter's secret case code.
-      The secret case code consists of 16 Crockford Base32 characters (32^16 = 2^80 combinations).
+    - `case_code_hash` stores a one-way HMAC-SHA256 digest of the reporter's secret case code using a server-side secret key.
+      The secret case code consists of 16 Crockford Base32 characters (32^16 = 2^80 ≈ 1.2089 × 10^24 combinations, ~80 bits of entropy).
     - Reporters query using their plaintext case code, which is hashed at query time.
     - Internal database primary keys (UUID) are never revealed across public reporter endpoints.
     """
@@ -72,6 +71,18 @@ class Report(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         default=ReportStatus.SUBMITTED,
         nullable=False,
         index=True,
+    )
+
+    is_closed: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        nullable=False,
+        index=True,
+    )
+
+    closed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     # Status updates timeline relationship

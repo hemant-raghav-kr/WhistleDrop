@@ -12,6 +12,7 @@ import {
   History,
   Lock,
   MessageSquare,
+  ShieldAlert,
   XCircle,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
@@ -20,7 +21,12 @@ import { StatusBadge, CategoryBadge } from '../components/common/Badge';
 import { StatusTimeline } from '../components/common/StatusTimeline';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
-import { downloadEvidenceFile, getModeratorReport, updateReportStatus } from '../services/api';
+import {
+  closeReport,
+  downloadEvidenceFile,
+  getModeratorReport,
+  updateReportStatus,
+} from '../services/api';
 import { ReportModeratorRead, ReportStatus } from '../types';
 
 function formatBytes(bytes: number): string {
@@ -44,6 +50,12 @@ export const ModeratorReportDetailPage: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
+
+  // Case Closure Modal State
+  const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+  const [closeMessage, setCloseMessage] = useState('Case investigation has been permanently concluded.');
+  const [isClosing, setIsClosing] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   const handleDownloadEvidence = async (fileId: string, filename: string) => {
     if (!id) return;
@@ -115,6 +127,32 @@ export const ModeratorReportDetailPage: React.FC = () => {
     }
   };
 
+  const handleExecuteClose = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+
+    const trimmedMsg = closeMessage.trim();
+    if (!trimmedMsg) {
+      setCloseError('Please enter an explanatory note for closing this case.');
+      return;
+    }
+
+    setIsClosing(true);
+    setCloseError(null);
+
+    try {
+      const closed = await closeReport(id, trimmedMsg);
+      setReport(closed);
+      setIsCloseModalOpen(false);
+      setSuccessToast('Case has been permanently closed.');
+      setTimeout(() => setSuccessToast(null), 4000);
+    } catch (err: any) {
+      setCloseError(err.message || 'Failed to close report.');
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
   const formatDate = (isoString?: string) => {
     if (!isoString) return '—';
     try {
@@ -179,9 +217,17 @@ export const ModeratorReportDetailPage: React.FC = () => {
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Back to queue</span>
         </Link>
-        <span className="font-mono text-[11px] text-zinc-500">
-          ID: {report.id}
-        </span>
+        <div className="flex items-center gap-2">
+          {report.is_closed && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              <Lock className="w-3 h-3" />
+              PERMANENTLY CLOSED
+            </span>
+          )}
+          <span className="font-mono text-[11px] text-zinc-500">
+            ID: {report.id}
+          </span>
+        </div>
       </div>
 
       {/* Success Notification Toast */}
@@ -194,6 +240,21 @@ export const ModeratorReportDetailPage: React.FC = () => {
           <button onClick={() => setSuccessToast(null)} className="text-emerald-400 hover:underline">
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Permanently Closed Alert Banner if closed */}
+      {report.is_closed && (
+        <div className="p-4 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-3">
+          <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-rose-200 text-sm">
+              Case Permanently Closed
+            </p>
+            <p className="text-zinc-300 leading-relaxed">
+              This report has been permanently closed {report.closed_at ? `on ${formatDate(report.closed_at)}` : ''}. No further status updates, investigations, or lifecycle transitions may be performed on this case code.
+            </p>
+          </div>
         </div>
       )}
 
@@ -296,47 +357,73 @@ export const ModeratorReportDetailPage: React.FC = () => {
             </span>
           </div>
 
-          {/* Action Buttons strictly reflecting state machine */}
-          {report.status === 'SUBMITTED' && (
-            <div className="flex flex-wrap gap-2.5">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => openTransitionModal('UNDER_REVIEW')}
-                icon={<Clock className="w-3.5 h-3.5" />}
-              >
-                Mark Under Review
-              </Button>
-            </div>
-          )}
-
-          {report.status === 'UNDER_REVIEW' && (
-            <div className="flex flex-wrap gap-2.5">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => openTransitionModal('RESOLVED')}
-                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-              >
-                Resolve Report
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => openTransitionModal('DISMISSED')}
-                icon={<XCircle className="w-3.5 h-3.5" />}
-              >
-                Dismiss Report
-              </Button>
-            </div>
-          )}
-
-          {(report.status === 'RESOLVED' || report.status === 'DISMISSED') && (
+          {report.is_closed ? (
             <div className="p-3 rounded-md bg-zinc-950/80 border border-zinc-800 flex items-center gap-2 text-xs text-zinc-400">
-              <Lock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              <Lock className="w-3.5 h-3.5 text-rose-400 shrink-0" />
               <span>
-                This report has reached a terminal status (<strong>{report.status}</strong>) and cannot be updated further.
+                Case is <strong>permanently closed</strong>. Status transitions are disabled.
               </span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* State transitions */}
+              {report.status === 'SUBMITTED' && (
+                <div className="flex flex-wrap gap-2.5">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => openTransitionModal('UNDER_REVIEW')}
+                    icon={<Clock className="w-3.5 h-3.5" />}
+                  >
+                    Mark Under Review
+                  </Button>
+                </div>
+              )}
+
+              {report.status === 'UNDER_REVIEW' && (
+                <div className="flex flex-wrap gap-2.5">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => openTransitionModal('RESOLVED')}
+                    icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  >
+                    Resolve Report
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => openTransitionModal('DISMISSED')}
+                    icon={<XCircle className="w-3.5 h-3.5" />}
+                  >
+                    Dismiss Report
+                  </Button>
+                </div>
+              )}
+
+              {(report.status === 'RESOLVED' || report.status === 'DISMISSED') && (
+                <div className="p-3 rounded-md bg-zinc-950/80 border border-zinc-800 flex items-center gap-2 text-xs text-zinc-400">
+                  <Lock className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                  <span>
+                    This report has reached a terminal status (<strong>{report.status}</strong>).
+                  </span>
+                </div>
+              )}
+
+              {/* Permanent Case Closure Button */}
+              <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between">
+                <p className="text-[11px] text-zinc-500">
+                  Conclude investigation and lock case against any future updates.
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setIsCloseModalOpen(true)}
+                  icon={<Lock className="w-3.5 h-3.5 text-zinc-400" />}
+                >
+                  Permanently Close Case
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -408,6 +495,69 @@ export const ModeratorReportDetailPage: React.FC = () => {
               icon={<MessageSquare className="w-3.5 h-3.5" />}
             >
               Confirm
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirmation Modal for Permanent Case Closure */}
+      <Modal
+        isOpen={isCloseModalOpen}
+        onClose={() => setIsCloseModalOpen(false)}
+        title="Permanently Close Case"
+        description="Permanently conclude investigation on this report. Once closed, this case cannot be transitioned or modified again."
+      >
+        <form onSubmit={handleExecuteClose} className="space-y-4">
+          {closeError && (
+            <div className="p-3 rounded-md bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              <p>{closeError}</p>
+            </div>
+          )}
+
+          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-xs text-amber-300 flex items-start gap-2">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <span>
+              This action is permanent and creates an irreversible audit log entry on the public tracker.
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="closeMsg"
+              className="block text-xs font-medium text-zinc-300"
+            >
+              Closing note / explanation <span className="text-rose-400">*</span>
+            </label>
+            <textarea
+              id="closeMsg"
+              rows={3}
+              value={closeMessage}
+              onChange={(e) => setCloseMessage(e.target.value)}
+              placeholder="State the concluding findings and rationale for closing this case..."
+              required
+              className="w-full rounded-md bg-zinc-950 border border-zinc-800 p-2.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600 transition-colors"
+            />
+          </div>
+
+          <div className="pt-2 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setIsCloseModalOpen(false)}
+              disabled={isClosing}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="danger"
+              size="sm"
+              isLoading={isClosing}
+              icon={<Lock className="w-3.5 h-3.5" />}
+            >
+              Permanently Close
             </Button>
           </div>
         </form>
