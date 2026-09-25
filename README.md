@@ -4,6 +4,40 @@ WhistleDrop is an anonymous whistleblower reporting system built for the GDG on 
 
 ---
 
+## Screenshots
+
+### Landing & Overview
+The public landing page introduces the system workflow and provides immediate access to submit or track reports.
+
+![WhistleDrop Home Page](docs/screenshots/landing.png)
+
+### Anonymous Report Submission
+Reporters select an incident category, write details, and optionally attach reference links or evidence files without ever creating an account.
+
+![Anonymous Report Submission](docs/screenshots/report.png)
+
+### Case Tracking & Timeline
+Reporters can check investigation status and read official audit notes at any time using their private 16-character case code.
+
+![Case Tracking Timeline](docs/screenshots/tracking.png)
+
+### Moderator Dashboard
+Authenticated staff can view the queue, filter by status or category, search reports, and monitor overview metrics.
+
+![Moderator Dashboard](docs/screenshots/moderator-dashboard.png)
+
+### Case Inspection & Lifecycle Actions
+Moderators review incident details, access attached evidence, and transition cases through defined workflow stages.
+
+![Moderator Case Details](docs/screenshots/case-details.png)
+
+### Status Transitions & Audit Updates
+Status changes require an audit note that is recorded in the case timeline and made visible to the reporter.
+
+![Status Update Transition Modal](docs/screenshots/status-update.png)
+
+---
+
 ## What it does
 
 1. **Submit a report anonymously**: A user picks a category (Security, Harassment, Corruption, Technical, or Other), types a description, and can optionally provide an evidence URL or upload an evidence file (image, PDF, or text). No name, email, phone number, or login is required.
