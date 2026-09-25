@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Add name and role to moderators table
     op.add_column("moderators", sa.Column("name", sa.String(length=255), nullable=True))
-    op.add_column("moderators", sa.Column("role", sa.String(length=20), nullable=False, server_default="USER"))
+    op.add_column("moderators", sa.Column("role", sa.String(length=20), nullable=False, server_default=sa.text("'USER'")))
     op.create_index(op.f("ix_moderators_role"), "moderators", ["role"], unique=False)
 
     # Add is_closed and closed_at to reports table

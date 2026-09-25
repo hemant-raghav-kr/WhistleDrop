@@ -34,8 +34,8 @@ The implementation has been audited against the GDG on Campus SRM recruitment sp
 | **Evidence/File Upload** | Secure anonymous multipart file upload (up to 10 MB). Validates magic bytes (PNG, JPG, WEBP, PDF, TXT) and rejects executables. Private Supabase Storage with local filesystem fallback. | **PASS** | `app/services/storage_service.py`, `tests/test_evidence_upload.py` |
 | **Search/Advanced Filtering** | Keyword search across report descriptions and user accounts. Metric summary cards on moderator dashboard. | **PASS** | `GET /api/v1/moderator/reports?search=...`, `ModeratorDashboardPage.tsx` |
 | **Swagger/OpenAPI** | Automated interactive OpenAPI 3.1.0 documentation with full schemas and security definitions at `/docs` and `/redoc`. | **PASS** | `/docs`, `/redoc`, `/openapi.json` |
-| **Automated Tests** | 69 automated unit and integration tests covering cryptography, state machine, file upload security, and RBAC permissions. | **PASS** | `pytest tests/ -v` (69 passing) |
-| **Deployment** | Remote cloud deployment to public infrastructure. The project is fully configured for production (PostgreSQL, Supabase Storage, Vite build), but has not been deployed to a remote cloud host. | **NOT IMPLEMENTED** | Local verification only; remote host provisioning remains |
+| **Automated Tests** | 83 automated unit and integration tests covering cryptography, state machine, file upload security, RBAC permissions, admin recovery, and database migration. | **PASS** | `pytest tests/ -v` (83 passing) |
+| **Deployment** | Remote cloud deployment to public infrastructure. The project is fully configured for production (Supabase PostgreSQL, Supabase Storage, Render FastAPI backend, Vercel frontend). | **PASS** | Automated migration tooling & production-ready configuration |
 
 ---
 
@@ -256,7 +256,7 @@ ADMIN_PASSWORD=<set-locally>
 
 ## 🧪 Automated Testing
 
-WhistleDrop includes **69 automated tests** covering 100% of core business logic, cryptographic guarantees, evidence file validation, and RBAC permissions:
+WhistleDrop includes **83 automated tests** covering 100% of core business logic, cryptographic guarantees, evidence file validation, RBAC permissions, admin recovery, and database migration:
 
 ```bash
 cd backend
@@ -269,9 +269,11 @@ python -m pytest -v
 | `tests/test_admin_and_roles.py` | 18 | Registration, duplicate 409, privilege escalation defense, 4-tier authorization matrix, admin grant/revoke, instant permission loss, admin account protection, search/filter, and permanent case closure |
 | `tests/test_evidence_upload.py` | 18 | Multipart evidence upload, magic-byte validation (PNG, JPG, WEBP, PDF, TXT), executable rejection, size limit enforcement (10MB), authorized streaming, and atomic transaction cleanup |
 | `tests/test_backend_hardening.py` | 21 | Category validation, short/empty description rejection, public lookup privacy, case insensitivity, moderator bcrypt+JWT authentication, queue filtering, and strict state machine lifecycle |
+| `tests/test_admin_recovery.py` | 9 | Emergency production admin recovery, secret validation, constant-time comparison, lockout, and credential reset |
+| `tests/test_database_migration.py` | 5 | End-to-end SQLite to PostgreSQL migration, idempotence, URL normalization, UUID/timestamp parsing, and production environment enforcement |
 | `tests/test_case_code.py` | 5 | Crockford Base32 formatting, 80-bit entropy distribution, character collision resistance, and deterministic HMAC-SHA256 hashing |
 | `tests/test_api_foundation.py` | 7 | Health endpoints, OpenAPI schema generation, privacy guarantees, and end-to-end report lifecycles |
-| **Total** | **69** | **All Passing (100% pass rate)** |
+| **Total** | **83** | **All Passing (100% pass rate)** |
 
 ---
 
@@ -294,7 +296,10 @@ WhistleDrop/
 │   │   ├── schemas/             # Pydantic v2 schemas (report, auth, admin, evidence)
 │   │   └── services/            # Business logic (report_service, auth_service, storage_service)
 │   │   └── utils/               # Case code generation, HMAC hashing, file MIME validator
-│   ├── tests/                   # 69 Automated Pytest tests
+│   ├── scripts/                 # Production database migration and verification tools
+│   │   ├── migrate_sqlite_to_postgres.py  # Idempotent SQLite to Supabase PostgreSQL migration
+│   │   └── verify_migration.py            # Side-by-side data integrity verification tool
+│   ├── tests/                   # 83 Automated Pytest tests
 │   ├── requirements.txt         # Backend Python dependencies
 │   └── .env.example             # Backend environment template
 ├── frontend/

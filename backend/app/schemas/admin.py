@@ -32,3 +32,26 @@ class UserRoleUpdate(BaseModel):
         if v not in (UserRole.USER, UserRole.MODERATOR):
             raise ValueError("Role can only be changed to USER or MODERATOR.")
         return v
+
+
+class AdminRecoveryResetRequest(BaseModel):
+    """Payload to reset admin password via temporary recovery secret."""
+    recovery_secret: Optional[str] = Field(
+        None,
+        description="One-time recovery secret (can also be provided via X-Recovery-Secret header)",
+    )
+    new_password: str = Field(
+        ...,
+        min_length=8,
+        max_length=128,
+        description="New password for the system administrator account",
+    )
+
+
+class AdminRecoveryResetResponse(BaseModel):
+    """Generic recovery status response without exposing credentials."""
+    status: str
+    detail: str
+
+
+

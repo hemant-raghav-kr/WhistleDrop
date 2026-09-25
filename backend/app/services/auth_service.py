@@ -181,3 +181,50 @@ def update_user_role(
     db.commit()
     db.refresh(user)
     return user
+
+
+def reset_admin_password(db: Session, new_password: str) -> Moderator:
+    """Safely reset or initialize the system administrator password.
+
+    Guarantees:
+    - Finds the existing ADMIN account.
+    - If no user has role ADMIN, checks username 'admin' or email 'admin@whistledrop.org'.
+    - If neither exists, creates a fresh admin account.
+    - Hashes new password with standard bcrypt (12 rounds).
+    - Ensures is_active is True and role is UserRole.ADMIN.
+    - Never modifies other users, moderators, reports, or evidence data.
+    """
+    admin = db.query(Moderator).filter(Moderator.role == UserRole.ADMIN).first()
+    if not admin:
+        admin = (
+            db.query(Moderator)
+            .filter(
+                or_(
+                    Moderator.username == "admin",
+                    Moderator.email == "admin@whistledrop.org",
+                )
+            )
+            .first()
+        )
+        if admin:
+            admin.role = UserRole.ADMIN
+
+    if not admin:
+        admin = Moderator(
+            name="System Administrator",
+            email="admin@whistledrop.org",
+            username="admin",
+            hashed_password=get_password_hash(new_password),
+            role=UserRole.ADMIN,
+            is_active=True,
+        )
+        db.add(admin)
+    else:
+        admin.hashed_password = get_password_hash(new_password)
+        admin.is_active = True
+        admin.role = UserRole.ADMIN
+
+    db.commit()
+    db.refresh(admin)
+    return admin
+

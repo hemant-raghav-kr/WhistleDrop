@@ -21,7 +21,10 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    """Retrieve database URL from application settings."""
+    """Retrieve database URL from alembic config, falling back to application settings."""
+    url = config.get_main_option("sqlalchemy.url")
+    if url:
+        return settings.assemble_database_url(url)
     return settings.DATABASE_URL
 
 

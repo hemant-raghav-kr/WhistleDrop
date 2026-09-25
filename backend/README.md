@@ -39,11 +39,15 @@ cd backend
 ..\.venv\Scripts\Activate.ps1
 copy .env.example .env
 
-# Run automated test suite (69 tests covering all core and optional features):
+# Run automated test suite (83 tests covering all core and optional features):
 pytest tests/ -v
 
 # Run database migrations:
 alembic upgrade head
+
+# Production database migration (SQLite -> Supabase PostgreSQL):
+python scripts/migrate_sqlite_to_postgres.py --sqlite-path whistledrop.db --postgres-url "<SUPABASE_URL>"
+python scripts/verify_migration.py --sqlite-path whistledrop.db --postgres-url "<SUPABASE_URL>"
 
 # Start development server:
 uvicorn app.main:app --reload --port 8000

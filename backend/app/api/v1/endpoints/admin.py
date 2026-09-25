@@ -1,21 +1,46 @@
 """Admin endpoints for user and role management."""
 
+import hmac
+import logging
 import uuid
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_admin
+from app.core.config import settings
 from app.models.moderator import Moderator
-from app.schemas.admin import UserAdminRead, UserRoleUpdate
+from app.schemas.admin import (
+    AdminRecoveryResetRequest,
+    AdminRecoveryResetResponse,
+    UserAdminRead,
+    UserRoleUpdate,
+)
 from app.services.auth_service import (
     AdminProtectedError,
     get_moderator_by_id,
     list_users,
+    reset_admin_password,
     update_user_role,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+# In-memory tracking for recovery brute-force protection
+_recovery_state: Dict[str, Any] = {
+    "failed_attempts": 0,
+    "lockout_until": None,
+}
+
+
+def _reset_recovery_state() -> None:
+    """Helper for testing: reset attempt counter and lockout."""
+    _recovery_state["failed_attempts"] = 0
+    _recovery_state["lockout_until"] = None
+
 
 
 @router.get(
@@ -104,3 +129,81 @@ def change_user_role(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+
+
+@router.post(
+    "/recovery/reset-password",
+    response_model=AdminRecoveryResetResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Temporary emergency admin password reset (Recovery Secret Required)",
+    description=(
+        "Emergency recovery endpoint to reset the system administrator password without shell access. "
+        "Requires a strong one-time recovery secret configured in server environment (ADMIN_RECOVERY_SECRET). "
+        "Returns 404 when disabled or unconfigured. Rate limited with cooldown on repeated failures."
+    ),
+    responses={
+        200: {"description": "Admin password successfully reset"},
+        401: {"description": "Invalid recovery secret"},
+        404: {"description": "Recovery endpoint disabled"},
+        422: {"description": "Validation error (e.g. password too short)"},
+        429: {"description": "Too many failed recovery attempts; temporarily locked"},
+    },
+)
+def recovery_reset_admin_password(
+    body: AdminRecoveryResetRequest,
+    db: Session = Depends(get_db),
+    x_recovery_secret: Optional[str] = Header(None, alias="X-Recovery-Secret"),
+) -> AdminRecoveryResetResponse:
+    """Emergency reset endpoint for administrator account."""
+    configured_secret = (settings.ADMIN_RECOVERY_SECRET or "").strip()
+    disallowed_secrets = {"", "placeholder", "changeme", "default", "none", "secret", "admin"}
+
+    # 1. Verification: Disabled if secret is unset, too short (<16 chars), or placeholder
+    if not configured_secret or len(configured_secret) < 16 or configured_secret.lower() in disallowed_secrets:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Admin recovery service is disabled.",
+        )
+
+    # 2. Safety: Lockout check on repeated failures
+    now = datetime.now(timezone.utc)
+    if _recovery_state["lockout_until"] and now < _recovery_state["lockout_until"]:
+        remaining = int((_recovery_state["lockout_until"] - now).total_seconds())
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed recovery attempts. Locked out for {remaining} seconds.",
+        )
+
+    # 3. Extract candidate secret from header or request body
+    provided_secret = (x_recovery_secret or body.recovery_secret or "").strip()
+
+    # 4. Constant-time secret comparison
+    is_valid = bool(provided_secret) and hmac.compare_digest(
+        provided_secret.encode("utf-8"),
+        configured_secret.encode("utf-8"),
+    )
+
+    if not is_valid:
+        _recovery_state["failed_attempts"] += 1
+        if _recovery_state["failed_attempts"] >= 5:
+            _recovery_state["lockout_until"] = now + timedelta(minutes=15)
+            logger.warning("Admin recovery locked out for 15 minutes due to 5 consecutive failed attempts.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid recovery secret.",
+        )
+
+    # 5. Success: reset lockout state and update password
+    _recovery_state["failed_attempts"] = 0
+    _recovery_state["lockout_until"] = None
+
+    reset_admin_password(db=db, new_password=body.new_password)
+    logger.warning("Admin account password was successfully reset via verified recovery secret.")
+
+    return AdminRecoveryResetResponse(
+        status="success",
+        detail="Admin password has been reset successfully.",
+    )
+
+
+

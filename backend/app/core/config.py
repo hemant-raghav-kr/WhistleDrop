@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Frontend URL for production CORS configuration (e.g. Vercel deployment)
     FRONTEND_URL: Optional[str] = None
 
+    # Temporary admin recovery secret (enabled only when explicitly set via environment variable)
+    ADMIN_RECOVERY_SECRET: Optional[str] = None
+
+
     # Object Storage (Supabase Storage for evidence files)
     STORAGE_PROVIDER: str = "auto"  # "auto", "supabase", or "local"
     SUPABASE_URL: Optional[str] = None
@@ -45,6 +49,8 @@ class Settings(BaseSettings):
             # Standardize postgresql drivers for psycopg 3
             if v_clean.startswith("postgres://"):
                 return v_clean.replace("postgres://", "postgresql+psycopg://", 1)
+            elif v_clean.startswith("postgresql+psycopg2://"):
+                return v_clean.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
             elif v_clean.startswith("postgresql://") and not v_clean.startswith("postgresql+"):
                 return v_clean.replace("postgresql://", "postgresql+psycopg://", 1)
             return v_clean
@@ -71,6 +77,10 @@ class Settings(BaseSettings):
                 raise ValueError("JWT_SECRET must be configured with a secure key in production.")
             if self.CASE_CODE_SALT == "default_case_code_salt":
                 raise ValueError("CASE_CODE_SALT must be configured with a secure secret key in production.")
+            if self.DATABASE_URL.startswith("sqlite"):
+                raise ValueError(
+                    "Production database must be PostgreSQL (Supabase). SQLite is strictly prohibited in production."
+                )
         return self
 
     model_config = SettingsConfigDict(
