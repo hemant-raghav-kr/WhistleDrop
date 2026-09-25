@@ -11,9 +11,36 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.core.config import settings
 from app.db.base import Base
 
+from sqlalchemy import Column, MetaData, PrimaryKeyConstraint, String, Table, text
+from alembic.ddl.impl import DefaultImpl
+
+# Ensure Alembic creates/allows version_num strings longer than default 32 chars
+_orig_version_table_impl = DefaultImpl.version_table_impl
+
+
+def _custom_version_table_impl(
+    self,
+    *,
+    version_table: str,
+    version_table_schema: str | None,
+    version_table_pk: bool,
+    **kw,
+) -> Table:
+    vt = Table(
+        version_table,
+        MetaData(),
+        Column("version_num", String(128), nullable=False),
+        schema=version_table_schema,
+    )
+    if version_table_pk:
+        vt.append_constraint(PrimaryKeyConstraint("version_num", name=f"{version_table}_pkc"))
+    return vt
+
+
+DefaultImpl.version_table_impl = _custom_version_table_impl
+
 config = context.config
 
-# Interpret the config file for Python logging
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
@@ -36,6 +63,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_num_length=128,
     )
 
     with context.begin_transaction():
@@ -57,6 +85,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            version_num_length=128,
         )
 
         with context.begin_transaction():

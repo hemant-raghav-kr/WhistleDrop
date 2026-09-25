@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     STORAGE_PROVIDER: str = "auto"  # "auto", "supabase", or "local"
     SUPABASE_URL: Optional[str] = None
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    SUPABASE_SECRET_KEY: Optional[str] = None  # Supabase new secret key format
     SUPABASE_STORAGE_BUCKET: str = "whistledrop-evidence"
     STORAGE_LOCAL_FALLBACK_DIR: str = ".evidence_storage"
 
@@ -67,6 +68,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
+        # Support both new Supabase SUPABASE_SECRET_KEY and legacy SUPABASE_SERVICE_ROLE_KEY
+        if not self.SUPABASE_SERVICE_ROLE_KEY and self.SUPABASE_SECRET_KEY:
+            self.SUPABASE_SERVICE_ROLE_KEY = self.SUPABASE_SECRET_KEY
+
         if self.FRONTEND_URL:
             clean_url = self.FRONTEND_URL.strip().rstrip("/")
             if clean_url and clean_url not in self.CORS_ORIGINS:
