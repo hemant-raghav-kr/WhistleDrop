@@ -1,149 +1,201 @@
 # WhistleDrop — Speak Without Being Seen
 
-> **GDG on Campus SRM 2026-27 Technical Domain Recruitment Submission**  
-> A confidential whistleblower reporting platform engineered to eliminate retaliation risks through zero-knowledge anonymity, cryptographic tracking codes, strict state-machine governance, and 3-tier role-based administration.
+WhistleDrop is an anonymous whistleblower reporting system built for the GDG on Campus SRM Technical Domain recruitment. It allows anyone to submit a confidential report without creating an account or providing personal details, receive a private case tracking code, and track the report's review progress over time.
 
 ---
 
-## 🌟 Requirements Compliance Matrix
+## What it does
 
-The implementation has been audited against the GDG on Campus SRM recruitment specification. Every mandatory requirement and applicable optional enhancement has been systematically verified.
-
-### Mandatory Requirements
-| Requirement | Specification Details | Status | Implementation Reference |
-|---|---|:---:|---|
-| **Anonymous Reporting** | Submit reports without creating an account or providing identity. Includes category, description, optional evidence URL, and optional evidence file. | **PASS** | `POST /api/v1/reports`, `SubmitReportPage.tsx` |
-| **Case Tracking** | Unique 16-character Crockford Base32 tracking code without requiring reporter credentials. Case-insensitive lookup. | **PASS** | `GET /api/v1/reports/{case_code}`, `TrackReportPage.tsx` |
-| **Case Code Security** | Generated via CSPRNG `secrets` ($32^{16} = 2^{80} \approx 1.2089 \times 10^{24}$ combinations, ~80 bits of entropy). Stored exclusively as one-way HMAC-SHA256 digests using a server-side secret key. | **PASS** | `app/utils/case_code.py`, `tests/test_case_code.py` |
-| **Report Status Workflow** | Strict linear-branch state machine (`SUBMITTED` $\rightarrow$ `UNDER_REVIEW` $\rightarrow$ `RESOLVED` / `DISMISSED`). Direct skips and transitions from terminal states are rejected with HTTP 400. | **PASS** | `app/services/report_service.py`, `app/models/report.py` |
-| **Status Updates** | Moderators transition report status and append mandatory explanatory audit messages. Timeline visible to reporter. | **PASS** | `PATCH /api/v1/moderator/reports/{id}/status`, `StatusTimeline.tsx` |
-| **Moderator Access** | Independent authentication via salted bcrypt (12 rounds) and signed JWT bearer tokens. Unauthenticated requests return HTTP 401. | **PASS** | `POST /api/v1/auth/login`, `app/api/deps.py` |
-| **Category Filtering** | Filter moderation queue by category (`SECURITY`, `HARASSMENT`, `CORRUPTION`, `TECHNICAL`, `OTHER`). | **PASS** | `GET /api/v1/moderator/reports?category=...` |
-| **Status Filtering** | Filter moderation queue by lifecycle status (`SUBMITTED`, `UNDER_REVIEW`, `RESOLVED`, `DISMISSED`). | **PASS** | `GET /api/v1/moderator/reports?status=...` |
-| **Privacy & Security** | Zero reporter IP address, browser fingerprint, or user-agent logging. Internal database UUIDs concealed from public responses. | **PASS** | `app/api/v1/endpoints/reports.py`, `app/schemas/report.py` |
-| **API Validation** | Pydantic v2 schemas enforce category enums, description length bounds, URL format, file magic bytes, and password requirements. | **PASS** | `app/schemas/`, `app/utils/file_validation.py` |
-| **HTTP Semantics** | Semantic HTTP status codes throughout (200 OK, 201 Created, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found, 409 Conflict, 422 Unprocessable Entity). | **PASS** | `tests/test_backend_hardening.py`, `tests/test_admin_and_roles.py` |
-| **README Documentation** | Clear architectural documentation, entropy math, setup instructions, threat model, and verification steps. | **PASS** | `README.md` |
-
-### Optional Enhancements
-| Enhancement | Specification Details | Status | Implementation Reference |
-|---|---|:---:|---|
-| **Moderator/Admin Dashboard** | Self-service registration (`POST /api/v1/auth/register`) default to `USER`. Admin dashboard (`/admin/users`) with search and role management (Grant/Revoke Moderator). Real-time DB permission evaluation. | **PASS** | `app/api/v1/endpoints/admin.py`, `AdminUsersPage.tsx` |
-| **Permanent Case Closure** | Explicit case closure endpoint (`POST /api/v1/moderator/reports/{id}/close`) marking `is_closed=True` and permanently locking reports against any further status updates. | **PASS** | `app/services/report_service.py`, `ModeratorReportDetailPage.tsx` |
-| **Additional Privacy Protections** | HMAC-SHA256 digests using a server-side secret key prevent precomputed rainbow table attacks even if database is dumped. Uploaded file metadata is sanitized. | **PASS** | `app/utils/case_code.py`, `app/utils/file_validation.py` |
-| **Evidence/File Upload** | Secure anonymous multipart file upload (up to 10 MB). Validates magic bytes (PNG, JPG, WEBP, PDF, TXT) and rejects executables. Private Supabase Storage with local filesystem fallback. | **PASS** | `app/services/storage_service.py`, `tests/test_evidence_upload.py` |
-| **Search/Advanced Filtering** | Keyword search across report descriptions and user accounts. Metric summary cards on moderator dashboard. | **PASS** | `GET /api/v1/moderator/reports?search=...`, `ModeratorDashboardPage.tsx` |
-| **Swagger/OpenAPI** | Automated interactive OpenAPI 3.1.0 documentation with full schemas and security definitions at `/docs` and `/redoc`. | **PASS** | `/docs`, `/redoc`, `/openapi.json` |
-| **Automated Tests** | 83 automated unit and integration tests covering cryptography, state machine, file upload security, RBAC permissions, admin recovery, and database migration. | **PASS** | `pytest tests/ -v` (83 passing) |
-| **Deployment** | Remote cloud deployment to public infrastructure. The project is fully configured for production (Supabase PostgreSQL, Supabase Storage, Render FastAPI backend, Vercel frontend). | **PASS** | Automated migration tooling & production-ready configuration |
+1. **Submit a report anonymously**: A user picks a category (Security, Harassment, Corruption, Technical, or Other), types a description, and can optionally provide an evidence URL or upload an evidence file (image, PDF, or text). No name, email, phone number, or login is required.
+2. **Receive a case code**: Upon submission, the system generates a private 16-character tracking code formatted like `WD-XXXX-XXXX-XXXX-XXXX`. The user saves this code.
+3. **Track progress**: The user enters their case code on the tracking page to view the current status (`SUBMITTED`, `UNDER_REVIEW`, `RESOLVED`, or `DISMISSED`) and read public status updates left by moderators.
+4. **Moderator & Admin dashboard**: Staff members can sign in with role-based permissions (`USER`, `MODERATOR`, `ADMIN`). Moderators can search, filter, update statuses with notes, view evidence files via signed links, and close cases. Admins can also manage user roles and promote registered users to moderators.
 
 ---
 
-## 🏛️ Architecture & Role System
+## Features
 
-WhistleDrop enforces a 3-tier Role-Based Access Control (RBAC) hierarchy backed by live database verification on every request:
+- **Account-free anonymous reporting**: Submit reports without an account or personal information.
+- **Case-code tracking**: Reports are tracked using 16-character Crockford Base32 codes.
+- **One-way case code storage**: The database stores an HMAC-SHA256 hash of the case code with a server-side secret key; raw codes are never stored in the database.
+- **Strict status workflow**: Status transitions follow an explicit state machine (`SUBMITTED` → `UNDER_REVIEW` → `RESOLVED` or `DISMISSED`), with audit notes appended to each step.
+- **Permanent case closure**: Moderators can formally close a case, locking it from further status edits.
+- **Evidence file upload**: Users can upload evidence files (PNG, JPG, WEBP, PDF, TXT up to 10 MB). File contents are validated by inspecting magic bytes rather than trusting file extensions.
+- **Private evidence storage**: Evidence files are stored in a private Supabase Storage bucket and accessed through short-lived signed URLs for authenticated staff.
+- **Role-based access control (RBAC)**: 3-tier hierarchy (`USER`, `MODERATOR`, `ADMIN`). New registrations default to `USER`; administrators can grant or revoke moderator privileges.
+- **Admin user management**: Admins can search registered users by name or email, view assigned roles, and promote or demote accounts.
+- **Interactive API documentation**: Automatically generated Swagger UI at `/docs` and ReDoc at `/redoc`.
+- **Comprehensive test suite**: 81 automated backend unit and integration tests.
+- **Production deployment**: Configured and deployed across Vercel (Frontend), Render (Backend), and Supabase (PostgreSQL database and private Storage).
 
-```mermaid
-flowchart TD
-    subgraph Public ["Public / Unauthenticated Access"]
-        P1["Anonymous Reporter"]
-        P2["Submit Report (No Account)"]
-        P3["Track Case Code (HMAC-SHA256)"]
-        P4["Self-Service Register (POST /auth/register)"]
-    end
+---
 
-    subgraph StandardUser ["Role: USER (Registered Account)"]
-        U1["Logged in with JWT"]
-        U2["Can Track & Submit Reports"]
-        U3["Blocked from Mod & Admin Endpoints (403 Forbidden)"]
-        U4["Awaits Moderator Access from Admin"]
-    end
+## How it works
 
-    subgraph Moderator ["Role: MODERATOR (Elevated Staff)"]
-        M1["View Filtered Reports Queue"]
-        M2["Inspect Incident Evidence & Files"]
-        M3["Transition Status & Append Audit Logs"]
-        M4["Permanently Close Cases"]
-        M5["Blocked from Admin Endpoints (403 Forbidden)"]
-    end
+### Anonymous Submission & Privacy
+When a report is submitted via `POST /api/v1/reports`, the backend only takes the report category, description, and optional evidence. The application does not intentionally store reporter IP addresses, User-Agent headers, browser fingerprints, or reporter account IDs.
 
-    subgraph Admin ["Role: ADMIN (System Administrator)"]
-        A1["All Moderator Capabilities"]
-        A2["User Management Dashboard (/admin/users)"]
-        A3["Search Users by Name or Email"]
-        A4["Grant Moderator Access (USER -> MODERATOR)"]
-        A5["Revoke Moderator Access (MODERATOR -> USER)"]
-        A6["Protected from Downgrade or Removal"]
-    end
+### Case Code Generation & Storage
+- **Code format**: Codes use 16 Crockford Base32 characters (`23456789ABCDEFGHJKMNPQRSTUVWXYZ`), grouped into 4 blocks of 4 characters (`WD-XXXX-XXXX-XXXX-XXXX`). Crockford Base32 excludes visually confusing characters like `0`, `O`, `1`, `I`, and `L`.
+- **Entropy**: $32^{16} = 2^{80} \approx 1.2 \times 10^{24}$ possible combinations (~80 bits of entropy), generated using Python's `secrets` module (CSPRNG).
+- **Storage**: The plaintext code is returned to the user once upon submission and is never stored in the database. Instead, the backend hashes the normalized code using **HMAC-SHA256** with a server-side secret (`CASE_CODE_SALT`). When tracking a report, the input code is hashed with the same key to look up the record.
 
-    P2 -->|Generates Case Code| P1
-    P4 -->|Hardcoded role=USER| StandardUser
-    A4 -->|Admin Promotes| Moderator
-    A5 -->|Admin Demotes (Real-Time Loss)| StandardUser
+### Status Lifecycle
+Reports follow an explicit state machine:
+- Initial state: `SUBMITTED`
+- Review state: `UNDER_REVIEW`
+- Final states: `RESOLVED` or `DISMISSED`
+
+Invalid transitions (such as jumping directly from `SUBMITTED` to `RESOLVED`, or modifying a report after it has been marked closed) are rejected by the backend with HTTP 400. Each valid status update creates a timestamped record in `status_updates` with an explanatory message visible on the tracking timeline.
+
+### Evidence Handling
+Evidence files can be uploaded as multipart form data alongside the report:
+- The backend reads the raw bytes and checks file magic numbers (file signatures) to confirm the true MIME type.
+- Executable files (`.exe`, `.sh`, `.bat`, `.php`, `.js`) are strictly rejected.
+- Valid files are uploaded to a private Supabase Storage bucket using an unpredictable storage path (`reports/{report_id}/evidence/{uuid}_{filename}`).
+- When a moderator views evidence, the backend generates an authenticated signed URL with a 5-minute expiration time.
+
+### Role Hierarchy & Permissions
+- **Anonymous**: Can submit reports and look up status by case code.
+- **`USER`**: Registered user. Can submit and track reports; blocked from moderator and admin endpoints.
+- **`MODERATOR`**: Can view the report queue, search and filter cases, view evidence files, update report statuses, and close cases.
+- **`ADMIN`**: Inherits all moderator permissions plus user management (listing users, searching accounts, and granting/revoking the `MODERATOR` role). The primary admin account is protected from accidental demotion.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| **Frontend** | React 18, TypeScript, Vite | Single-page application with responsive UI |
+| **Styling & Icons** | Tailwind CSS, Lucide React | Clean, responsive interface styling |
+| **Backend** | Python 3.12+, FastAPI, Uvicorn | Asynchronous REST API service |
+| **Data Validation** | Pydantic v2 | Request/response schemas and input sanitization |
+| **ORM & Migrations** | SQLAlchemy 2.0, Alembic | Database models, migrations, and PostgreSQL driver |
+| **Database** | PostgreSQL (Supabase) | Production relational database |
+| **Object Storage** | Supabase Storage | Private bucket for evidence file uploads |
+| **Authentication** | bcrypt (12 rounds), PyJWT | Password hashing and JWT bearer tokens |
+| **Deployment** | Vercel, Render | Frontend SPA on Vercel, backend API on Render |
+| **Testing** | pytest, httpx TestClient | 81 automated tests |
+
+---
+
+## Architecture
+
+```
+                    ┌─────────────────────────┐
+                    │      Vercel Frontend    │
+                    │   (React + TypeScript)  │
+                    └────────────┬────────────┘
+                                 │ HTTPS / CORS
+                                 ▼
+                    ┌─────────────────────────┐
+                    │      Render Backend     │
+                    │    (FastAPI + Uvicorn)  │
+                    └──────┬────────────┬─────┘
+                           │            │
+             PostgreSQL    │            │  HTTPS REST
+        (Session Pooler)   │            │  (Signed URLs)
+                           ▼            ▼
+               ┌───────────────┐   ┌─────────────────────────┐
+               │   Supabase    │   │     Supabase Storage    │
+               │  PostgreSQL   │   │  (whistledrop-evidence) │
+               └───────────────┘   └─────────────────────────┘
 ```
 
-### Authorization Matrix
-| Endpoint / Resource | Anonymous | `USER` | `MODERATOR` | `ADMIN` |
-|---|:---:|:---:|:---:|:---:|
-| `POST /api/v1/reports` (Submit) | ✅ 201 | ✅ 201 | ✅ 201 | ✅ 201 |
-| `GET /api/v1/reports/{code}` (Track) | ✅ 200 | ✅ 200 | ✅ 200 | ✅ 200 |
-| `POST /api/v1/auth/register` (Register) | ✅ 201 | ❌ 400 | ❌ 400 | ❌ 400 |
-| `POST /api/v1/auth/login` (Login) | ✅ 200 | ✅ 200 | ✅ 200 | ✅ 200 |
-| `GET /api/v1/auth/me` (Profile) | ❌ 401 | ✅ 200 | ✅ 200 | ✅ 200 |
-| `GET /api/v1/moderator/reports` (Queue) | ❌ 401 | ❌ 403 | ✅ 200 | ✅ 200 |
-| `GET /api/v1/moderator/reports/{id}` (Detail) | ❌ 401 | ❌ 403 | ✅ 200 | ✅ 200 |
-| `PATCH /api/v1/moderator/reports/{id}/status` | ❌ 401 | ❌ 403 | ✅ 200 | ✅ 200 |
-| `POST /api/v1/moderator/reports/{id}/close` | ❌ 401 | ❌ 403 | ✅ 200 | ✅ 200 |
-| `GET /api/v1/admin/users` (User List) | ❌ 401 | ❌ 403 | ❌ 403 | ✅ 200 |
-| `PATCH /api/v1/admin/users/{id}/role` | ❌ 401 | ❌ 403 | ❌ 403 | ✅ 200 |
+---
+
+## API Overview
+
+The backend exposes 16 endpoints structured under `/api/v1`:
+
+### Public Endpoints
+- `POST /api/v1/reports` — Submit an anonymous report (JSON or multipart with file upload)
+- `GET /api/v1/reports/{case_code}` — Look up report status and updates timeline by case code
+- `POST /api/v1/auth/register` — Register a new account (assigned `USER` role)
+- `POST /api/v1/auth/login` — Sign in and receive a JWT bearer token
+- `GET /health` — Health check endpoint for uptime monitoring
+
+### Authenticated User Endpoints
+- `GET /api/v1/auth/me` — Get current user profile and active role
+
+### Moderator Endpoints (Requires `MODERATOR` or `ADMIN` role)
+- `GET /api/v1/moderator/reports` — List reports with status, category, search, and pagination filters
+- `GET /api/v1/moderator/reports/{id}` — Get full report detail, internal timeline, and evidence links
+- `PATCH /api/v1/moderator/reports/{id}/status` — Update report status with an audit message
+- `POST /api/v1/moderator/reports/{id}/close` — Permanently close a case
+- `GET /api/v1/moderator/evidence/{evidence_id}/signed-url` — Generate a temporary signed download URL for evidence
+
+### Administrator Endpoints (Requires `ADMIN` role)
+- `GET /api/v1/admin/users` — List registered users with search and role filters
+- `PATCH /api/v1/admin/users/{user_id}/role` — Grant or revoke moderator role
+- `POST /api/v1/admin/recovery/reset-password` — Emergency password reset endpoint (active only when `ADMIN_RECOVERY_SECRET` is set)
+
+Interactive documentation is available at `/docs` (Swagger UI) and `/redoc` (ReDoc).
 
 ---
 
-## 🔒 Security & Privacy Guarantees
+## Project Structure
 
-1. **Zero Reporter Identity Retention**: The database stores no IP addresses, browser fingerprints, geolocation, or user IDs alongside reports.
-2. **CSPRNG Case Code Generation**: 16 Crockford Base32 characters generated via Python's cryptographically secure `secrets` module ($32^{16} = 2^{80} \approx 1.2089 \times 10^{24}$ combinations, approximately 80 bits of entropy). Excludes visually ambiguous characters (`0`, `O`, `1`, `I`, `L`).
-3. **One-Way HMAC-SHA256 Storage**: The database stores only HMAC-SHA256 digests created with a server-side secret key (`CASE_CODE_SALT`). Precomputed rainbow table attacks are impossible even in the event of a database compromise.
-4. **Real-Time Permission Checks**: Authorization dependencies query the database on every authenticated request rather than trusting stale JWT claims, guaranteeing immediate revocation without waiting for token expiry.
-5. **Magic Byte Evidence Validation**: File uploads are verified using byte inspection rather than relying on client-supplied file extensions, strictly blocking executable scripts (EXE, PHP, JS, SH, BAT).
-6. **Strict State Machine**: Enforces `SUBMITTED` $\rightarrow$ `UNDER_REVIEW` $\rightarrow$ `RESOLVED`/`DISMISSED`. Direct jumps or reversals from terminal states are rejected with HTTP 400.
-7. **Privilege Escalation Defense**: `POST /api/v1/auth/register` ignores any client-supplied `role` parameter and unconditionally assigns `role = USER`. The primary system administrator account cannot be demoted or revoked.
+```
+WhistleDrop/
+├── backend/
+│   ├── alembic/                 # Database schema migrations
+│   │   └── versions/            # 0001_initial, 0002_evidence, 0003_user_roles_and_case_closure
+│   ├── app/
+│   │   ├── api/                 # API routes and dependencies
+│   │   │   ├── deps.py          # DB session and role-based auth dependencies
+│   │   │   └── v1/endpoints/    # reports.py, auth.py, moderator.py, admin.py
+│   │   ├── core/                # Configuration and security
+│   │   │   ├── config.py        # Settings and environment validation
+│   │   │   └── security.py      # Password hashing (bcrypt) and JWT helpers
+│   │   ├── db/                  # Database engine and session setup
+│   │   ├── models/              # SQLAlchemy models: Report, Moderator, StatusUpdate, EvidenceFile
+│   │   ├── schemas/             # Pydantic models for validation and serialization
+│   │   ├── services/            # Business logic: report_service, auth_service, storage_service
+│   │   └── utils/               # Case code generation, HMAC hashing, file validation
+│   ├── scripts/
+│   │   └── create_initial_admin.py  # CLI script to provision the primary admin account
+│   ├── tests/                   # 81 automated test cases
+│   ├── requirements.txt         # Python dependencies
+│   └── .env.example             # Backend environment template
+├── frontend/
+│   ├── src/
+│   │   ├── components/common/   # Reusable UI components (Navbar, Modal, Badge, etc.)
+│   │   ├── context/             # AuthContext for session management
+│   │   ├── pages/               # HomePage, SubmitReportPage, TrackReportPage, ModeratorPages, etc.
+│   │   ├── services/            # Typed API client with unified error extraction
+│   │   └── types/               # TypeScript type definitions
+│   ├── package.json             # Frontend dependencies
+│   └── .env.example             # Frontend environment template
+├── render.yaml                  # Render deployment configuration
+├── .gitignore                   # Ignored files (.env, venv, node_modules, etc.)
+└── README.md                    # Main project documentation
+```
 
 ---
 
-## 🛠️ Tech Stack
-
-| Layer | Technologies |
-|---|---|
-| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Lucide React, React Router v6 |
-| **Backend** | Python 3.12+ (tested on Python 3.14), FastAPI, Uvicorn, Pydantic v2 |
-| **ORM & Database** | SQLAlchemy 2.0, Alembic, PostgreSQL (Production) / SQLite (Local Dev) |
-| **Authentication & Cryptography** | HMAC-SHA256 with server-side secret key, Python `secrets` CSPRNG, `bcrypt` (12 rounds), `PyJWT` |
-| **Object Storage** | Supabase Private Storage with automatic local filesystem fallback |
-| **Testing** | `pytest`, `httpx` (Starlette TestClient) — **69 / 69 Tests Passing** |
-
----
-
-## 🚀 Quickstart & Local Setup
+## Local Setup
 
 ### Prerequisites
-- Python 3.12+ (or 3.14)
-- Node.js 18+ & npm
+- Python 3.12+
+- Node.js 18+ and npm
 - Git
 
-### 1. Clone the Repository
+### 1. Clone the repository
 ```bash
 git clone https://github.com/hemant-raghav-kr/WhistleDrop.git
 cd WhistleDrop
 ```
 
-### 2. Backend Setup
+### 2. Backend setup
 ```bash
 # Create and activate virtual environment
 python -m venv .venv
+
 # Windows:
 .venv\Scripts\activate
-# Linux/macOS:
+# macOS/Linux:
 source .venv/bin/activate
 
 # Install dependencies
@@ -153,172 +205,89 @@ pip install -r backend/requirements.txt
 cd backend
 cp .env.example .env
 
-# Run database migrations
-alembic upgrade head
+# Apply database migrations
+python -m alembic upgrade head
 
-# Start FastAPI server
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+# Start the development server
+uvicorn app.main:app --reload --port 8000
 ```
-- API Endpoint: `http://localhost:8000`
-- Interactive Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+The API will run at `http://localhost:8000`. Interactive documentation is at `http://localhost:8000/docs`.
 
-### 3. Frontend Setup
+### 3. Frontend setup
+In a separate terminal:
 ```bash
 cd frontend
 
 # Install dependencies
 npm install
 
-# Configure environment variables
+# Configure environment
 cp .env.example .env
 
-# Start Vite dev server
+# Start the Vite development server
 npm run dev
 ```
-- Web Application: `http://localhost:5173`
+The web application will open at `http://localhost:5173`.
 
 ---
 
-## 🚢 Production Deployment Guide
+## Environment Variables
 
-WhistleDrop is pre-configured for automated production deployment across **Vercel** (Frontend) and **Render** (Backend), backed by an existing **Supabase PostgreSQL** database and **Supabase Private Object Storage**.
+### Backend (`backend/.env` / Render Dashboard)
 
-### 1. Database Migrations (Supabase PostgreSQL)
-Before the backend serves traffic, apply Alembic migrations against the production database:
-```bash
-cd backend
-# With production DATABASE_URL exported:
-python -m alembic upgrade head
-```
-*(Render also executes this automatically during each build via `render.yaml`).*
-
-### 2. Backend Deployment (Render)
-- **Service Type**: Web Service (Python 3.12 via `.python-version`)
-- **Root Directory**: `backend`
-- **Build Command**: `pip install -r requirements.txt && alembic upgrade head`
-- **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- **Health Check Path**: `/health`
-- **Blueprint**: Pre-configured in repository root [`render.yaml`](./render.yaml).
-
-#### Required Backend Environment Variables (Render Dashboard):
-| Variable | Value / Description | Sensitive |
+| Variable Name | Description | Required in Production |
 |---|---|:---:|
-| `ENVIRONMENT` | `production` | No |
-| `DATABASE_URL` | `postgresql+psycopg://postgres:[PASSWORD]@[HOST]:[PORT]/postgres` | Yes |
-| `JWT_SECRET` | `<cryptographically-random-32-byte-hex-string>` | Yes |
-| `CASE_CODE_SALT` | `<cryptographically-random-secret-key>` | Yes |
-| `SUPABASE_URL` | `https://<your-supabase-project-id>.supabase.co` | No |
-| `SUPABASE_SERVICE_ROLE_KEY` | `<your-private-supabase-service-role-key>` | Yes |
-| `SUPABASE_STORAGE_BUCKET` | `whistledrop-evidence` | No |
-| `FRONTEND_URL` | `https://<your-vercel-app-name>.vercel.app` | No |
+| `ENVIRONMENT` | Environment mode (`development` or `production`). In production, triggers strict security checks. | Yes |
+| `DATABASE_URL` | PostgreSQL connection string. In production, use the Supabase Session Pooler (port 5432). | Yes |
+| `CASE_CODE_SALT` | Secret key used for HMAC-SHA256 case code hashing. | Yes |
+| `JWT_SECRET` | Secret key used to sign and verify JWT authentication tokens. | Yes |
+| `FRONTEND_URL` | Production frontend URL (e.g. `https://whistle-drop-two.vercel.app`) for CORS. | Yes |
+| `SUPABASE_URL` | Supabase project URL (`https://<project-ref>.supabase.co`). | Yes |
+| `SUPABASE_SECRET_KEY` | Supabase API secret key for backend storage access. (`SUPABASE_SERVICE_ROLE_KEY` also supported). | Yes |
+| `SUPABASE_STORAGE_BUCKET` | Name of the private storage bucket (`whistledrop-evidence`). | No (default set) |
+| `ADMIN_RECOVERY_SECRET` | Temporary secret to enable emergency admin provisioning via API without shell access. | Optional |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Token expiration time in minutes (default `480` for 8 hours). | No |
+| `JWT_ALGORITHM` | JWT signing algorithm (default `HS256`). | No |
 
-> [!CAUTION]
-> `SUPABASE_SERVICE_ROLE_KEY` must only be set on Render (server-side). Never expose this key to the frontend or public repositories.
+### Frontend (`frontend/.env` / Vercel Dashboard)
 
-### 3. Object Storage (Supabase Private Bucket)
-1. In your Supabase Dashboard, create a storage bucket named `whistledrop-evidence`.
-2. Ensure the bucket is set to **Private** (Public bucket = Disabled).
-3. The backend uses the `SUPABASE_SERVICE_ROLE_KEY` to securely generate time-limited signed download URLs (300s expiration) for authorized staff moderators only.
-
-### 4. Frontend Deployment (Vercel)
-- **Framework Preset**: Vite
-- **Root Directory**: `frontend`
-- **Build Command**: `npm run build` (runs `tsc -b && vite build`)
-- **Output Directory**: `dist`
-- **SPA Routing**: Handled automatically by [`frontend/vercel.json`](./frontend/vercel.json).
-
-#### Required Frontend Environment Variables (Vercel Dashboard):
-| Variable | Value / Description | Sensitive |
-|---|---|:---:|
-| `VITE_API_URL` | `https://<your-render-service-name>.onrender.com` | No |
+| Variable Name | Description |
+|---|---|
+| `VITE_API_URL` | Backend API base URL (`/api/v1` locally, `https://whistledrop.onrender.com/api/v1` in production). |
 
 ---
 
-## 🔑 Administrator & Staff Setup
+## Testing
 
-For local testing and evaluation, an administrator account can be configured or accessed using local environment variables:
+The project includes **81 automated tests** covering report creation, privacy protections, case code generation and hashing, file upload and magic byte inspection, status transitions, RBAC permissions, and admin recovery.
 
+Run the test suite from the repository root:
 ```bash
-ADMIN_EMAIL=admin@example.com
-ADMIN_PASSWORD=<set-locally>
+pytest backend/tests/ -v
 ```
 
-> [!NOTE]
-> Testing the complete user-to-moderator flow:
-> 1. Go to **Sign in / Staff** $\rightarrow$ **Create Account**.
-> 2. Register a new user (e.g. `jane@example.com`).
-> 3. Log in with the administrator account $\rightarrow$ navigate to **Users** (`/admin/users`).
-> 4. Click **Grant Moderator** next to Jane's account.
-> 5. Jane can now sign in and access the full Moderator Queue.
+All 81 tests execute against an isolated in-memory test database with transaction rollbacks after each test.
 
 ---
 
-## 🧪 Automated Testing
+## Deployment
 
-WhistleDrop includes **83 automated tests** covering 100% of core business logic, cryptographic guarantees, evidence file validation, RBAC permissions, admin recovery, and database migration:
+The project is deployed on public cloud infrastructure:
 
-```bash
-cd backend
-python -m pytest -v
-```
-
-### Test Suites Breakdown
-| Test Suite | Tests | Scope |
-|---|:---:|---|
-| `tests/test_admin_and_roles.py` | 18 | Registration, duplicate 409, privilege escalation defense, 4-tier authorization matrix, admin grant/revoke, instant permission loss, admin account protection, search/filter, and permanent case closure |
-| `tests/test_evidence_upload.py` | 18 | Multipart evidence upload, magic-byte validation (PNG, JPG, WEBP, PDF, TXT), executable rejection, size limit enforcement (10MB), authorized streaming, and atomic transaction cleanup |
-| `tests/test_backend_hardening.py` | 21 | Category validation, short/empty description rejection, public lookup privacy, case insensitivity, moderator bcrypt+JWT authentication, queue filtering, and strict state machine lifecycle |
-| `tests/test_admin_recovery.py` | 9 | Emergency production admin recovery, secret validation, constant-time comparison, lockout, and credential reset |
-| `tests/test_database_migration.py` | 5 | End-to-end SQLite to PostgreSQL migration, idempotence, URL normalization, UUID/timestamp parsing, and production environment enforcement |
-| `tests/test_case_code.py` | 5 | Crockford Base32 formatting, 80-bit entropy distribution, character collision resistance, and deterministic HMAC-SHA256 hashing |
-| `tests/test_api_foundation.py` | 7 | Health endpoints, OpenAPI schema generation, privacy guarantees, and end-to-end report lifecycles |
-| **Total** | **83** | **All Passing (100% pass rate)** |
+- **Frontend**: Hosted on [Vercel](https://vercel.com) at [https://whistle-drop-two.vercel.app](https://whistle-drop-two.vercel.app). Built with Vite and configured with client-side SPA routing (`vercel.json`).
+- **Backend**: Hosted on [Render](https://render.com) as a Web Service at [https://whistledrop.onrender.com](https://whistledrop.onrender.com). Configured with automatic deployments on push to `main` via `render.yaml`.
+  - Build command: `pip install -r requirements.txt && python -m alembic upgrade head`
+  - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Database & Storage**: Hosted on [Supabase](https://supabase.com). Uses PostgreSQL via Supabase's IPv4 connection pooler and a private Supabase Storage bucket for evidence attachments.
 
 ---
 
-## 📁 Project Directory Structure
+## Project Status
 
-```
-WhistleDrop/
-├── backend/
-│   ├── alembic/                 # Alembic database migrations
-│   │   └── versions/            # 0001_initial, 0002_evidence, 0003_user_roles_and_case_closure
-│   ├── app/
-│   │   ├── api/                 # API routers and dependency injection
-│   │   │   ├── deps.py          # Database session, live DB role resolution, JWT guards
-│   │   │   └── v1/endpoints/    # reports.py, auth.py, moderator.py, admin.py
-│   │   ├── core/                # Configuration and security utilities
-│   │   │   ├── config.py        # Settings (DB, JWT, Storage, Secret Key)
-│   │   │   └── security.py      # Bcrypt hashing and JWT encoding/decoding
-│   │   ├── db/                  # Database session engine and declarative base
-│   │   ├── models/              # SQLAlchemy ORM models (Report, StatusUpdate, Moderator, EvidenceFile)
-│   │   ├── schemas/             # Pydantic v2 schemas (report, auth, admin, evidence)
-│   │   └── services/            # Business logic (report_service, auth_service, storage_service)
-│   │   └── utils/               # Case code generation, HMAC hashing, file MIME validator
-│   ├── scripts/                 # Production database migration and verification tools
-│   │   ├── migrate_sqlite_to_postgres.py  # Idempotent SQLite to Supabase PostgreSQL migration
-│   │   └── verify_migration.py            # Side-by-side data integrity verification tool
-│   ├── tests/                   # 83 Automated Pytest tests
-│   ├── requirements.txt         # Backend Python dependencies
-│   └── .env.example             # Backend environment template
-├── frontend/
-│   ├── src/
-│   │   ├── components/common/   # Reusable UI components (Button, Badge, Modal, Timeline, EmptyState)
-│   │   ├── context/             # AuthContext (Live user profile, RBAC role guards)
-│   │   ├── pages/               # HomePage, SubmitReportPage, TrackReportPage, ModeratorDashboard,
-│   │   │                        # ModeratorReportDetailPage, AdminUsersPage, ModeratorLoginPage
-│   │   ├── services/            # Typed API client with unified error extraction
-│   │   └── types/               # TypeScript interfaces matching backend models
-│   ├── package.json             # Frontend dependencies and build scripts
-│   └── .env.example             # Frontend environment template
-├── .gitignore                   # Excludes .env, node_modules, .venv, *.db, storage_evidence
-└── README.md                    # Authoritative documentation and compliance report
-```
+The WhistleDrop platform is fully deployed and functional across both frontend and backend. Anonymous reports can be submitted and tracked, and staff members can log in to review and manage cases.
 
 ---
 
-## 📄 License & Attribution
+## License & Attribution
 
-Developed for the **GDG on Campus SRM 2026-27 Technical Domain Recruitment**.  
-Built with confidential, zero-knowledge architectural principles for secure reporting.
+Built for the **GDG on Campus SRM 2026-27 Technical Domain Recruitment**.
