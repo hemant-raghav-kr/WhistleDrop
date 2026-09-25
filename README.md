@@ -38,6 +38,26 @@ Status changes require an audit note that is recorded in the case timeline and m
 
 ---
 
+## Live Demo & Staff Access
+
+The platform is deployed and fully accessible:
+
+- **Frontend Application**: [https://whistle-drop-two.vercel.app](https://whistle-drop-two.vercel.app)
+- **Backend API & Swagger Docs**: [https://whistledrop.onrender.com/docs](https://whistledrop.onrender.com/docs)
+- **Staff / Moderator Login**: [https://whistle-drop-two.vercel.app/moderator/login](https://whistle-drop-two.vercel.app/moderator/login)
+
+To evaluate the staff moderator queue, case review workflow, status transitions, and user management:
+
+| Field | Value |
+|---|---|
+| **Username** | `admin` |
+| **Password** | `Adminsihere` |
+| **Role** | `ADMIN` (access to all moderator review tools + admin user role management) |
+
+> **Note**: Anonymous reporters do not need an account. You can submit reports and track cases directly from the public interface.
+
+---
+
 ## What it does
 
 1. **Submit a report anonymously**: A user picks a category (Security, Harassment, Corruption, Technical, or Other), types a description, and can optionally provide an evidence URL or upload an evidence file (image, PDF, or text). No name, email, phone number, or login is required.
@@ -242,6 +262,9 @@ cp .env.example .env
 # Apply database migrations
 python -m alembic upgrade head
 
+# (Optional) Provision the initial admin account
+python scripts/create_initial_admin.py --username admin --email admin@whistledrop.org --password Adminsihere
+
 # Start the development server
 uvicorn app.main:app --reload --port 8000
 ```
@@ -313,6 +336,7 @@ The project is deployed on public cloud infrastructure:
   - Build command: `pip install -r requirements.txt && python -m alembic upgrade head`
   - Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 - **Database & Storage**: Hosted on [Supabase](https://supabase.com). Uses PostgreSQL via Supabase's IPv4 connection pooler and a private Supabase Storage bucket for evidence attachments.
+- **Evaluation Account**: Seeded with administrator credentials (username `admin`, password `Adminsihere`) accessible via [/moderator/login](https://whistle-drop-two.vercel.app/moderator/login).
 
 ---
 
